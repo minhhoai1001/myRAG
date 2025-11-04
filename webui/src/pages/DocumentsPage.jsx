@@ -4,9 +4,13 @@ import { documentsApi, knowledgeApi } from '../services/api'
 function DocumentsPage() {
   const [documents, setDocuments] = useState([])
   const [knowledge, setKnowledge] = useState(null)
+  const [knowledgeList, setKnowledgeList] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [selectedKid, setSelectedKid] = useState(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [formData, setFormData] = useState({ name: '', description: '' })
 
   useEffect(() => {
     loadKnowledge()
@@ -20,10 +24,11 @@ function DocumentsPage() {
 
   const loadKnowledge = async () => {
     try {
-      const knowledgeList = await knowledgeApi.list()
-      if (knowledgeList.length > 0) {
-        setSelectedKid(knowledgeList[0].id)
-        setKnowledge(knowledgeList[0])
+      const list = await knowledgeApi.list()
+      setKnowledgeList(list)
+      if (list.length > 0) {
+        setSelectedKid(list[0].id)
+        setKnowledge(list[0])
       }
     } catch (error) {
       console.error('Failed to load knowledge:', error)
@@ -54,23 +59,83 @@ function DocumentsPage() {
     setDocuments([])
   }
 
+  const handleKnowledgeChange = async (e) => {
+    const kid = e.target.value
+    const selected = knowledgeList.find((k) => k.id === kid)
+    setSelectedKid(kid)
+    setKnowledge(selected)
+    await loadDocuments(kid)
+  }
+
+  const handleCreateKnowledge = async (e) => {
+    e.preventDefault()
+    if (!formData.name.trim()) {
+      alert('Please enter a name for the knowledge base')
+      return
+    }
+
+    try {
+      setCreating(true)
+      const newKnowledge = await knowledgeApi.create({
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+      })
+      await loadKnowledge()
+      setSelectedKid(newKnowledge.id)
+      setKnowledge(newKnowledge)
+      setShowCreateModal(false)
+      setFormData({ name: '', description: '' })
+    } catch (error) {
+      console.error('Failed to create knowledge:', error)
+      alert('Failed to create knowledge base')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleOpenCreateModal = () => {
+    setShowCreateModal(true)
+  }
+
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false)
+    setFormData({ name: '', description: '' })
+  }
+
   const handleUpload = async (event) => {
     const file = event.target.files[0]
     if (!file || !selectedKid) return
 
     try {
       setUploading(true)
-      const { doc_id, upload_url } = await documentsApi.getUploadUrl(
+      const contentType = file.type || 'application/octet-stream'
+      console.log(`Uploading file: ${file.name} (${file.size} bytes, type: ${contentType})`)
+      
+      const uploadResponse = await documentsApi.getUploadUrl(
         selectedKid,
         file.name,
-        file.type
+        contentType
       )
-      await documentsApi.upload(upload_url, file)
+      
+      const { doc_id, upload_url, bucket } = uploadResponse
+      console.log(`Got presigned URL for bucket: ${bucket || 'knowledge'}, doc_id: ${doc_id}`)
+      
+      await documentsApi.upload(upload_url, file, contentType)
+      console.log('File uploaded successfully')
+      
       await documentsApi.triggerIngest(doc_id)
       await loadDocuments(selectedKid)
+      alert('File uploaded successfully')
     } catch (error) {
       console.error('Failed to upload document:', error)
-      alert('Failed to upload document')
+      // Check if file already exists (409 status)
+      if (error.response?.status === 409) {
+        const errorMessage = error.response?.data?.detail || 'File already exists'
+        alert(`Error: ${errorMessage}`)
+      } else {
+        const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload document'
+        alert(`Error: ${errorMessage}`)
+      }
     } finally {
       setUploading(false)
       event.target.value = ''
@@ -142,12 +207,116 @@ function DocumentsPage() {
         </label>
       </div>
 
+      {/* Create Knowledge Modal */}
+      {showCreateModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleCloseCreateModal}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Create New Knowledge Base</h3>
+                <button
+                  onClick={handleCloseCreateModal}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <form onSubmit={handleCreateKnowledge}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                    placeholder="Enter knowledge base name"
+                    required
+                    disabled={creating}
+                  />
+                </div>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                    placeholder="Enter description (optional)"
+                    rows={3}
+                    disabled={creating}
+                  />
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseCreateModal}
+                    disabled={creating}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creating || !formData.name.trim()}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creating ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">Uploaded Documents</h2>
           <p className="text-sm text-gray-600 mt-1">
-            List of uploaded documents and their statuses.
+            List of uploaded documents and their statuses for the selected knowledge base.
           </p>
+          <div className="mt-4 flex items-end space-x-3">
+            <div className="flex-1 max-w-xs">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Knowledge Base:
+              </label>
+              {knowledgeList.length > 0 ? (
+                <select
+                  value={selectedKid || ''}
+                  onChange={handleKnowledgeChange}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                >
+                  {knowledgeList.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm text-gray-500">No knowledge bases available. Click "Create Knowledge" to get started.</p>
+              )}
+            </div>
+            <button
+              onClick={handleOpenCreateModal}
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 flex items-center space-x-2 h-[42px]"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Create Knowledge</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

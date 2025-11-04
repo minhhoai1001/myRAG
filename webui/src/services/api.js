@@ -26,12 +26,33 @@ export const documentsApi = {
       content_type: contentType,
     }).then(res => res.data)
   },
-  upload: async (uploadUrl, file) => {
-    await axios.put(uploadUrl, file, {
-      headers: {
-        'Content-Type': file.type,
-      },
-    })
+  upload: async (uploadUrl, file, contentType) => {
+    try {
+      const headers = {}
+      if (contentType) {
+        headers['Content-Type'] = contentType
+      }
+      
+      const response = await axios.put(uploadUrl, file, {
+        headers,
+        validateStatus: (status) => status < 500, // Don't throw on 4xx errors
+      })
+      if (response.status >= 400) {
+        throw new Error(`Upload failed with status ${response.status}: ${response.statusText}`)
+      }
+      return response
+    } catch (error) {
+      if (error.response) {
+        // Server responded with error
+        throw new Error(`Upload failed: ${error.response.status} ${error.response.statusText}`)
+      } else if (error.request) {
+        // Request made but no response (CORS, network, etc.)
+        throw new Error(`Upload failed: No response from server. This might be a CORS issue or network problem.`)
+      } else {
+        // Error setting up request
+        throw new Error(`Upload failed: ${error.message}`)
+      }
+    }
   },
   triggerIngest: (docId) =>
     api.post(`/documents/${docId}/ingest`).then(res => res.data),

@@ -10,13 +10,34 @@ router = APIRouter()
 
 @router.post("/knowledge/{kid}/documents/upload-url")
 def get_upload_url(kid: str, body: PresignIn, db: Session = Depends(get_db)):
-    if not db.get(Knowledge, kid): raise HTTPException(404, "Knowledge not found")
+    if not db.get(Knowledge, kid):
+        raise HTTPException(status_code=404, detail="Knowledge not found")
+
     doc_id = str(uuid.uuid4())
     key = make_s3_key(kid, doc_id, body.filename)
-    url = presign_put_url(BUCKET, key, body.content_type)
-    doc = Document(id=doc_id, knowledge_id=kid, filename=body.filename, s3_key=key, status="uploaded")
-    db.add(doc); db.commit()
-    return {"doc_id": doc_id, "upload_url": url, "s3_key": key}
+
+    try:
+        url = presign_put_url(key, body.content_type)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="File already exists in S3")
+
+    doc = Document(
+        id=doc_id,
+        knowledge_id=kid,
+        filename=body.filename,
+        s3_key=key,
+        status="uploaded",
+    )
+    db.add(doc)
+    db.commit()
+
+    print(f"Generated presigned URL for bucket='{BUCKET}', key='{key}'")
+    return {
+        "doc_id": doc_id,
+        "upload_url": url,
+        "s3_key": key,
+        "bucket": BUCKET,
+    }
 
 @router.get("/knowledge/{kid}/documents", response_model=list[DocOut])
 def list_docs(kid: str, db: Session = Depends(get_db)):

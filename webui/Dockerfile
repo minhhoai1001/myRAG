@@ -1,5 +1,8 @@
 FROM node:24-alpine
 
+# Install bash for convenience (optional)
+RUN apk add --no-cache bash
+
 WORKDIR /app
 
 # Copy package files
