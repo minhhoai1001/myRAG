@@ -13,9 +13,20 @@ def list_knowledge(db: Session = Depends(get_db)):
 
 @router.post("/knowledge", response_model=KnowledgeOut)
 def create_knowledge(body: KnowledgeCreate, db: Session = Depends(get_db)):
-    k = Knowledge(id=str(uuid.uuid4()), name=body.name, description=body.description)
-    db.add(k); db.commit(); db.refresh(k)
-    return k
+    try:
+        k = Knowledge(id=str(uuid.uuid4()), name=body.name, description=body.description)
+        db.add(k)
+        db.flush()  # Flush to get any database-generated values
+        db.commit()
+        db.refresh(k)
+        print(f"Knowledge created: id={k.id}, name={k.name}")
+        return k
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating knowledge: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create knowledge: {str(e)}")
 
 @router.get("/knowledge/{kid}", response_model=KnowledgeOut)
 def get_knowledge(kid: str, db: Session = Depends(get_db)):

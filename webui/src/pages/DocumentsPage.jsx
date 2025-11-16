@@ -11,6 +11,8 @@ function DocumentsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [creating, setCreating] = useState(false)
   const [formData, setFormData] = useState({ name: '', description: '' })
+  const [showReplaceModal, setShowReplaceModal] = useState(false)
+  const [pendingFile, setPendingFile] = useState(null)
 
   useEffect(() => {
     loadKnowledge()
@@ -106,6 +108,25 @@ function DocumentsPage() {
     const file = event.target.files[0]
     if (!file || !selectedKid) return
 
+    // Check if file with same name already exists
+    const existingDoc = documents.find(doc => doc.filename === file.name)
+    
+    if (existingDoc) {
+      // File exists, show replace confirmation modal
+      setPendingFile(file)
+      setShowReplaceModal(true)
+      event.target.value = ''
+      return
+    }
+
+    // No duplicate, proceed with upload
+    await performUpload(file)
+    event.target.value = ''
+  }
+
+  const performUpload = async (file) => {
+    if (!file || !selectedKid) return
+
     try {
       setUploading(true)
       const contentType = file.type || 'application/octet-stream'
@@ -114,7 +135,8 @@ function DocumentsPage() {
       const uploadResponse = await documentsApi.getUploadUrl(
         selectedKid,
         file.name,
-        contentType
+        contentType,
+        knowledge?.name || ''
       )
       
       const { doc_id, upload_url, bucket } = uploadResponse
@@ -128,18 +150,24 @@ function DocumentsPage() {
       alert('File uploaded successfully')
     } catch (error) {
       console.error('Failed to upload document:', error)
-      // Check if file already exists (409 status)
-      if (error.response?.status === 409) {
-        const errorMessage = error.response?.data?.detail || 'File already exists'
-        alert(`Error: ${errorMessage}`)
-      } else {
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload document'
-        alert(`Error: ${errorMessage}`)
-      }
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload document'
+      alert(`Error: ${errorMessage}`)
     } finally {
       setUploading(false)
-      event.target.value = ''
     }
+  }
+
+  const handleConfirmReplace = async () => {
+    setShowReplaceModal(false)
+    if (pendingFile) {
+      await performUpload(pendingFile)
+      setPendingFile(null)
+    }
+  }
+
+  const handleCancelReplace = () => {
+    setShowReplaceModal(false)
+    setPendingFile(null)
   }
 
   const formatDate = (dateString) => {
@@ -170,7 +198,7 @@ function DocumentsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Document Management</h1>
 
       <div className="mb-6 flex items-center space-x-3">
@@ -206,6 +234,59 @@ function DocumentsPage() {
           />
         </label>
       </div>
+
+      {/* Replace File Confirmation Modal */}
+      {showReplaceModal && pendingFile && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleCancelReplace}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">File Already Exists</h3>
+                <button
+                  onClick={handleCancelReplace}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mb-6">
+                <p className="text-sm text-gray-700 mb-2">
+                  A file named <span className="font-semibold">"{pendingFile.name}"</span> already exists in this knowledge base.
+                </p>
+                <p className="text-sm text-gray-600">
+                  Do you want to replace the existing file with the new one?
+                </p>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={handleCancelReplace}
+                  disabled={uploading}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReplace}
+                  disabled={uploading}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-md text-sm font-medium hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploading ? 'Replacing...' : 'Replace File'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Knowledge Modal */}
       {showCreateModal && (
@@ -319,21 +400,18 @@ function DocumentsPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   ID
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Summary
+                  Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Length
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Chunks
@@ -352,13 +430,13 @@ function DocumentsPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : documents.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     No documents found
                   </td>
                 </tr>
@@ -377,16 +455,13 @@ function DocumentsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {doc.page_count || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {doc.chunk_count || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(doc.uploaded_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(doc.uploaded_at)}
+                      {formatDate(doc.updated_at || doc.uploaded_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {}

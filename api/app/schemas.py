@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class KnowledgeCreate(BaseModel):
     name: str
@@ -19,6 +20,10 @@ class DocOut(BaseModel):
     id: str
     filename: str
     chunk_count: int
+    status: str
+    page_count: int | None
+    uploaded_at: datetime | None
+    updated_at: datetime | None
     class Config: from_attributes = True
 
 class ChatIn(BaseModel):

@@ -19,9 +19,9 @@ export const documentsApi = {
     if (!kid) throw new Error('kid is required')
     return api.get(`/knowledge/${kid}/documents`).then(res => res.data)
   },
-  getUploadUrl: (kid, filename, contentType) => {
+  getUploadUrl: (kid, filename, contentType, knowledgeName) => {
     if (!kid) throw new Error('kid is required')
-    return api.post(`/knowledge/${kid}/documents/upload-url`, {
+    return api.post(`/knowledge/${kid}/documents/upload-url?knowledge_name=${encodeURIComponent(knowledgeName)}`, {
       filename,
       content_type: contentType,
     }).then(res => res.data)

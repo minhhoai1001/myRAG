@@ -12,6 +12,7 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String, nullable=False)
     s3_key: Mapped[str] = mapped_column(String, nullable=False)
     uploaded_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     page_count: Mapped[int | None] = mapped_column(Integer)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, nullable=False, default="uploaded")  # uploaded|ingesting|ready|error
