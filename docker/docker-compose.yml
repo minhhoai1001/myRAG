@@ -31,7 +31,8 @@ services:
       dockerfile: Dockerfile
     container_name: rag-webui
     restart: unless-stopped
-    ports: ["3000:3000"]
+    ports:
+      - "3000:3000"
     networks: [ragnet]
     volumes:
       - ../webui:/app
@@ -39,6 +40,8 @@ services:
       - api
     environment:
       - API_URL=http://api:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
       
   worker:
     build:
@@ -59,12 +62,6 @@ services:
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
     networks: [ragnet]
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        echo "Worker is in idle mode, waiting...";
-        tail -f /dev/null
 
   ollama:
     image: ollama/ollama:latest
