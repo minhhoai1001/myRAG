@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { documentsApi, knowledgeApi } from '../services/api'
 
 function DocumentsPage() {
@@ -13,6 +13,7 @@ function DocumentsPage() {
   const [formData, setFormData] = useState({ name: '', description: '' })
   const [showReplaceModal, setShowReplaceModal] = useState(false)
   const [pendingFile, setPendingFile] = useState(null)
+  const [deletingDocId, setDeletingDocId] = useState(null)
 
   useEffect(() => {
     loadKnowledge()
@@ -23,6 +24,23 @@ function DocumentsPage() {
       loadDocuments(selectedKid)
     }
   }, [selectedKid])
+
+  // Auto-refresh documents when there are documents in "ingesting" or "uploaded" status
+  useEffect(() => {
+    if (!selectedKid) return
+
+    const hasActiveDocuments = documents.some(
+      doc => doc.status === 'ingesting' || doc.status === 'uploaded'
+    )
+
+    if (!hasActiveDocuments) return
+
+    const interval = setInterval(() => {
+      loadDocuments(selectedKid)
+    }, 3000) // Refresh every 3 seconds
+
+    return () => clearInterval(interval)
+  }, [selectedKid, documents, loadDocuments])
 
   const loadKnowledge = async () => {
     try {
@@ -39,7 +57,7 @@ function DocumentsPage() {
     }
   }
 
-  const loadDocuments = async (kid) => {
+  const loadDocuments = useCallback(async (kid) => {
     try {
       setLoading(true)
       const docs = await documentsApi.list(kid)
@@ -49,7 +67,7 @@ function DocumentsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const handleScan = () => {
     if (selectedKid) {
@@ -168,6 +186,25 @@ function DocumentsPage() {
   const handleCancelReplace = () => {
     setShowReplaceModal(false)
     setPendingFile(null)
+  }
+
+  const handleDeleteDocument = async (docId) => {
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      setDeletingDocId(docId)
+      await documentsApi.delete(docId)
+      await loadDocuments(selectedKid)
+      alert('Document deleted successfully')
+    } catch (error) {
+      console.error('Failed to delete document:', error)
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete document'
+      alert(`Error: ${errorMessage}`)
+    } finally {
+      setDeletingDocId(null)
+    }
   }
 
   const formatDate = (dateString) => {
@@ -423,7 +460,7 @@ function DocumentsPage() {
                   Updated
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Metadata
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -464,7 +501,22 @@ function DocumentsPage() {
                       {formatDate(doc.updated_at || doc.uploaded_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {}
+                      <button
+                        onClick={() => handleDeleteDocument(doc.id)}
+                        disabled={deletingDocId === doc.id}
+                        className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete document"
+                      >
+                        {deletingDocId === doc.id ? (
+                          <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))

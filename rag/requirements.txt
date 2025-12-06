@@ -1,2 +1,6 @@
 confluent-kafka
 qdrant-client
+docling
+boto3
+semantic_text_splitter
+ollama

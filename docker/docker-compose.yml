@@ -45,6 +45,9 @@ services:
       context: ../rag
       dockerfile: Dockerfile
     container_name: rag-worker
+    volumes:
+      - ../rag:/app
+      - workerdata:/root/.cache/huggingface
     depends_on:
       - kafka
       - qdrant
@@ -53,14 +56,30 @@ services:
       QDRANT_URL: http://qdrant:6333
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
     networks: [ragnet]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Worker is in idle mode, waiting...";
+        tail -f /dev/null
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+    networks: [ragnet]                        
 
 networks:
   ragnet:
     driver: bridge
 
 volumes:
-  pgdata:
-  qdrantdata:
+  workerdata:
+  ollamadata:

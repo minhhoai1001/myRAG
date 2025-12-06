@@ -41,3 +41,5 @@ curl -X POST "http://localhost:8083/connectors" \
 cd docker
 docker-compose -f .\docker-compose.db.yml -f .\docker-compose.yml -p rag up -d
 ```
+
+docker exec -it rag-ollama ollama pull qwen3-embedding:0.6b

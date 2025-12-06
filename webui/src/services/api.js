@@ -56,6 +56,8 @@ export const documentsApi = {
   },
   triggerIngest: (docId) =>
     api.post(`/documents/${docId}/ingest`).then(res => res.data),
+  delete: (docId) =>
+    api.delete(`/documents/${docId}`).then(res => res.data),
 }
 
 export const chatApi = {

@@ -29,3 +29,7 @@ class DocOut(BaseModel):
 class ChatIn(BaseModel):
     content: str
     section: Optional[str] = None
+
+class DocUpdate(BaseModel):
+    chunk_count: Optional[int] = None
+    status: Optional[str] = None

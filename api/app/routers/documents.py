@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.deps import get_db
 from app.models import Document, Knowledge
-from app.schemas import PresignIn, DocOut
-from app.services.s3_presign import make_s3_key, presign_put_url, presign_delete_url, BUCKET
+from app.schemas import PresignIn, DocOut, DocUpdate
+from app.services.s3_presign import make_s3_key, presign_put_url, presign_delete_url, delete_s3_object, BUCKET
 import uuid, datetime as dt
 
 router = APIRouter()
@@ -112,6 +112,38 @@ def get_delete_url(doc_id: str, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate delete URL: {str(e)}")
 
+@router.delete("/documents/{doc_id}")
+def delete_document(doc_id: str, db: Session = Depends(get_db)):
+    doc = db.get(Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Extract S3 key from s3_key (format: s3://bucket/key)
+    s3_key = doc.s3_key
+    if s3_key.startswith(f"s3://{BUCKET}/"):
+        key = s3_key.replace(f"s3://{BUCKET}/", "")
+    else:
+        # Fallback: try to extract key from s3_key
+        key = s3_key.split("/", 3)[-1] if "/" in s3_key else s3_key
+    
+    try:
+        # Delete from S3
+        delete_s3_object(key)
+        print(f"Deleted S3 object: {key}")
+        
+        # Delete from database
+        db.delete(doc)
+        db.commit()
+        print(f"Deleted document from database: {doc_id}")
+        
+        return {"deleted": True, "doc_id": doc_id}
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting document: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+
 @router.post("/documents/{doc_id}/ingest")
 def trigger_ingest(doc_id: str, db: Session = Depends(get_db)):
     doc = db.get(Document, doc_id)
@@ -130,3 +162,30 @@ def trigger_ingest(doc_id: str, db: Session = Depends(get_db)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to update document status: {str(e)}")
+
+@router.patch("/documents/{doc_id}", response_model=DocOut)
+def update_document(doc_id: str, body: DocUpdate, db: Session = Depends(get_db)):
+    doc = db.get(Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    try:
+        # Update chunk_count if provided
+        if body.chunk_count is not None:
+            doc.chunk_count = body.chunk_count
+        
+        # Update status if provided
+        if body.status is not None:
+            doc.status = body.status
+        
+        db.flush()
+        db.commit()
+        db.refresh(doc)
+        print(f"Updated document: id={doc_id}, chunk_count={doc.chunk_count}, status={doc.status}")
+        return doc
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating document: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update document: {str(e)}")

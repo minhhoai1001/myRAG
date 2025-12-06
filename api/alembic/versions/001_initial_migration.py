@@ -52,6 +52,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['knowledge_id'], ['knowledge.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+
+    # Set the replica identity for the document table to full
+    op.execute("ALTER TABLE public.document REPLICA IDENTITY FULL;")
     
     op.create_table('chunk',
     sa.Column('id', sa.String(), nullable=False),

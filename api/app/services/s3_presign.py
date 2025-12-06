@@ -49,3 +49,12 @@ def presign_delete_url(key: str, expires=900):
     )
     
     return presigned_url
+
+def delete_s3_object(key: str):
+    """Delete an object from S3"""
+    try:
+        s3_client.delete_object(Bucket=BUCKET, Key=key)
+        return True
+    except ClientError as e:
+        print(f"Error deleting S3 object {key}: {e}")
+        raise
